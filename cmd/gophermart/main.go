@@ -14,6 +14,9 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/config"
+	"github.com/knapptan/go-musthave-diploma-tpl/internal/handler"
+	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository/postgres"
+	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
 )
 
 func main() {
@@ -46,10 +49,26 @@ func main() {
 	}
 	slog.Info("migrations applied")
 
+	// --- repositories ---
+	userRepo := postgres.NewUserRepo(db)
+
+	// --- services ---
+	userSvc := service.NewUserService(userRepo, cfg.JWTSecret)
+
+	// --- handlers ---
+	userH := handler.NewUserHandler(userSvc)
+
+	// --- router ---
 	r := chi.NewRouter()
+
 	r.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
+	})
+
+	r.Route("/api/user", func(r chi.Router) {
+		r.Post("/register", userH.Register)
+		r.Post("/login", userH.Login)
 	})
 
 	slog.Info("starting server", "addr", cfg.RunAddress)
