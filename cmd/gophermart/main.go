@@ -15,6 +15,7 @@ import (
 
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/config"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/handler"
+	"github.com/knapptan/go-musthave-diploma-tpl/internal/middleware"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository/postgres"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
 )
@@ -51,12 +52,15 @@ func main() {
 
 	// --- repositories ---
 	userRepo := postgres.NewUserRepo(db)
+	orderRepo := postgres.NewOrderRepo(db)
 
 	// --- services ---
 	userSvc := service.NewUserService(userRepo, cfg.JWTSecret)
+	orderSvc := service.NewOrderService(orderRepo)
 
 	// --- handlers ---
 	userH := handler.NewUserHandler(userSvc)
+	orderH := handler.NewOrderHandler(orderSvc)
 
 	// --- router ---
 	r := chi.NewRouter()
@@ -69,6 +73,12 @@ func main() {
 	r.Route("/api/user", func(r chi.Router) {
 		r.Post("/register", userH.Register)
 		r.Post("/login", userH.Login)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(cfg.JWTSecret))
+			r.Post("/orders", orderH.Create)
+			r.Get("/orders", orderH.List)
+		})
 	})
 
 	slog.Info("starting server", "addr", cfg.RunAddress)
