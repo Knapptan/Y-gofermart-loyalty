@@ -61,7 +61,15 @@ func (f *fakeOrderRepo) ListPending(_ context.Context) ([]model.Order, error) {
 	return nil, nil
 }
 
-func (f *fakeOrderRepo) UpdateStatus(_ context.Context, _ string, _ model.OrderStatus, _ float64) error {
+func (f *fakeOrderRepo) ApplyResult(_ context.Context, number string, status model.OrderStatus, accrual float64) error {
+	o, ok := f.orders[number]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	o.Status = status
+	if status == model.StatusProcessed {
+		o.Accrual = accrual
+	}
 	return nil
 }
 

@@ -25,9 +25,8 @@ type OrderRepository interface {
 	GetByNumber(ctx context.Context, number string) (*model.Order, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Order, error)
 	ListPending(ctx context.Context) ([]model.Order, error)
-	UpdateStatus(ctx context.Context, number string, status model.OrderStatus, accrual float64) error
+	ApplyResult(ctx context.Context, number string, status model.OrderStatus, accrual float64) error
 }
-
 type BalanceRepository interface {
 	Get(ctx context.Context, userID string) (*model.Balance, error)
 	Withdraw(ctx context.Context, userID, order string, sum float64) error

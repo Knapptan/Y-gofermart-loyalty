@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-migrate/migrate/v4"
@@ -13,6 +15,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 
+	"github.com/knapptan/go-musthave-diploma-tpl/internal/accrual"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/config"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/handler"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/middleware"
@@ -67,6 +70,14 @@ func main() {
 
 	// --- router ---
 	r := chi.NewRouter()
+
+	// --- accrual worker ---
+	accrualClient := accrual.NewClient(cfg.AccrualAddress)
+	accrualWorker := service.NewAccrualWorker(orderRepo, accrualClient, 5*time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go accrualWorker.Run(ctx)
 
 	r.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

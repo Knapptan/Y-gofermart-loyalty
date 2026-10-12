@@ -116,3 +116,54 @@ func (r *OrderRepo) UpdateStatus(ctx context.Context, number string, status mode
 	)
 	return err
 }
+
+// ApplyResult атомарно обновляет статус заказа и начисляет баллы при PROCESSED.
+// Идемпотентно: повторный вызов для уже финализированного заказа ничего не делает.
+func (r *OrderRepo) ApplyResult(ctx context.Context, number string, status model.OrderStatus, accrual float64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var userID string
+	var prevStatus model.OrderStatus
+	err = tx.QueryRowContext(ctx,
+		`SELECT user_id, status FROM orders WHERE number = $1 FOR UPDATE`, number,
+	).Scan(&userID, &prevStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	// Финальные статусы не перезаписываем.
+	if prevStatus == model.StatusProcessed || prevStatus == model.StatusInvalid {
+		return nil
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE orders SET status = $1, accrual = $2 WHERE number = $3`,
+		status, accrual, number,
+	); err != nil {
+		return err
+	}
+
+	// Начисляем баллы только при PROCESSED и положительном accrual.
+	if status == model.StatusProcessed && accrual > 0 {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO balances (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, userID,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE balances SET current = current + $1 WHERE user_id = $2`,
+			accrual, userID,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
