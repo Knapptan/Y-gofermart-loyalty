@@ -53,14 +53,17 @@ func main() {
 	// --- repositories ---
 	userRepo := postgres.NewUserRepo(db)
 	orderRepo := postgres.NewOrderRepo(db)
+	balanceRepo := postgres.NewBalanceRepo(db)
 
 	// --- services ---
 	userSvc := service.NewUserService(userRepo, cfg.JWTSecret)
 	orderSvc := service.NewOrderService(orderRepo)
+	balanceSvc := service.NewBalanceService(balanceRepo)
 
 	// --- handlers ---
 	userH := handler.NewUserHandler(userSvc)
 	orderH := handler.NewOrderHandler(orderSvc)
+	balanceH := handler.NewBalanceHandler(balanceSvc)
 
 	// --- router ---
 	r := chi.NewRouter()
@@ -78,6 +81,9 @@ func main() {
 			r.Use(middleware.Auth(cfg.JWTSecret))
 			r.Post("/orders", orderH.Create)
 			r.Get("/orders", orderH.List)
+			r.Get("/balance", balanceH.Get)
+			r.Post("/balance/withdraw", balanceH.Withdraw)
+			r.Get("/withdrawals", balanceH.ListWithdrawals)
 		})
 	})
 
