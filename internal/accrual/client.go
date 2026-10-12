@@ -1,3 +1,5 @@
+// Package accrual содержит HTTP-клиент для внешнего сервиса расчёта
+// баллов лояльности.
 package accrual
 
 import (
@@ -23,14 +25,14 @@ var (
 	ErrTooManyRequests = errors.New("too many requests to accrual system")
 )
 
-// Response — успешный ответ сервиса (200).
+// Response — успешный ответ внешнего сервиса (200).
 type Response struct {
 	Order   string  `json:"order"`
 	Status  string  `json:"status"`
 	Accrual float64 `json:"accrual,omitempty"`
 }
 
-// TooManyRequestsError несёт Retry-After из заголовка.
+// TooManyRequestsError — ошибка rate-limit с полем RetryAfter.
 type TooManyRequestsError struct {
 	RetryAfter time.Duration
 }
@@ -43,11 +45,13 @@ func (e *TooManyRequestsError) Is(target error) bool {
 	return target == ErrTooManyRequests
 }
 
+// Client — HTTP-клиент для внешнего сервиса расчёта баллов.
 type Client struct {
 	baseURL string
 	http    *http.Client
 }
 
+// NewClient создаёт клиент с base URL и таймаутом 10 секунд.
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
@@ -55,11 +59,8 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// GetOrder возвращает:
-//   - (*Response, nil)             при 200
-//   - (nil, ErrNotRegistered)      при 204
-//   - (nil, *TooManyRequestsError) при 429
-//   - (nil, err)                   при 5xx и прочих
+// GetOrder запрашивает расчёт по номеру заказа.
+// Возвращает ErrNotRegistered при 204, *TooManyRequestsError при 429.
 func (c *Client) GetOrder(ctx context.Context, number string) (*Response, error) {
 	url := fmt.Sprintf("%s/api/orders/%s", c.baseURL, number)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

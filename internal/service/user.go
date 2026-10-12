@@ -12,16 +12,18 @@ import (
 
 const tokenTTL = 24 * time.Hour
 
+// UserService — сервис управления пользователями.
 type UserService struct {
 	users     repository.UserRepository
 	jwtSecret string
 }
 
+// NewUserService создаёт UserService.
 func NewUserService(users repository.UserRepository, jwtSecret string) *UserService {
 	return &UserService{users: users, jwtSecret: jwtSecret}
 }
 
-// Register создаёт пользователя и возвращает JWT-токен.
+// Register создаёт пользователя, хэширует пароль, возвращает JWT.
 func (s *UserService) Register(ctx context.Context, login, password string) (string, error) {
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {
@@ -44,7 +46,7 @@ func (s *UserService) Register(ctx context.Context, login, password string) (str
 	return auth.NewToken(s.jwtSecret, u.ID, tokenTTL)
 }
 
-// Login проверяет пару логин/пароль и возвращает JWT-токен.
+// Login проверяет пару логин/пароль и возвращает JWT.
 func (s *UserService) Login(ctx context.Context, login, password string) (string, error) {
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {

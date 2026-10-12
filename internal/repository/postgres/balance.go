@@ -9,12 +9,15 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository"
 )
 
+// BalanceRepo — PostgreSQL-реализация BalanceRepository.
 type BalanceRepo struct {
 	db *sql.DB
 }
 
+// NewBalanceRepo создаёт BalanceRepo.
 func NewBalanceRepo(db *sql.DB) *BalanceRepo { return &BalanceRepo{db: db} }
 
+// Get возвращает баланс; если записи нет — создаёт с нулями.
 func (r *BalanceRepo) Get(ctx context.Context, userID string) (*model.Balance, error) {
 	var b model.Balance
 	err := r.db.QueryRowContext(ctx,
@@ -36,8 +39,8 @@ func (r *BalanceRepo) Get(ctx context.Context, userID string) (*model.Balance, e
 	return &b, nil
 }
 
-// Withdraw атомарно списывает баллы и пишет факт списания.
-// Возвращает repository.ErrInsufficientFunds, если денег не хватает.
+// Withdraw транзакционное списание: SELECT FOR UPDATE, проверка средств,
+// обновление current/withdrawn, запись в withdrawals.
 func (r *BalanceRepo) Withdraw(ctx context.Context, userID, order string, sum float64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -83,6 +86,7 @@ func (r *BalanceRepo) Withdraw(ctx context.Context, userID, order string, sum fl
 	return tx.Commit()
 }
 
+// ListWithdrawals возвращает списания пользователя (DESC по processed_at).
 func (r *BalanceRepo) ListWithdrawals(ctx context.Context, userID string) ([]model.Withdrawal, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT order_number, sum, processed_at

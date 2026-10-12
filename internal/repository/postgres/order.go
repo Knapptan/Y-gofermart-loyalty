@@ -9,15 +9,16 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository"
 )
 
+// OrderRepo — PostgreSQL-реализация OrderRepository.
 type OrderRepo struct {
 	db *sql.DB
 }
 
+// NewOrderRepo создаёт OrderRepo.
 func NewOrderRepo(db *sql.DB) *OrderRepo { return &OrderRepo{db: db} }
 
-// Create вставляет заказ. Если номер уже есть:
-//   - принадлежит этому же пользователю → ErrOrderExistsSame
-//   - принадлежит другому → ErrOrderExistsOther
+// Create вставляет заказ с ON CONFLICT DO NOTHING.
+// Возвращает ErrOrderExistsSame / ErrOrderExistsOther при конфликте.
 func (r *OrderRepo) Create(ctx context.Context, userID, number string) error {
 	var inserted string
 	err := r.db.QueryRowContext(ctx,
@@ -48,6 +49,7 @@ func (r *OrderRepo) Create(ctx context.Context, userID, number string) error {
 	return repository.ErrOrderExistsOther
 }
 
+// GetByNumber ищет заказ по номеру.
 func (r *OrderRepo) GetByNumber(ctx context.Context, number string) (*model.Order, error) {
 	var o model.Order
 	err := r.db.QueryRowContext(ctx,
@@ -63,6 +65,7 @@ func (r *OrderRepo) GetByNumber(ctx context.Context, number string) (*model.Orde
 	return &o, nil
 }
 
+// ListByUser возвращает заказы пользователя (ORDER BY uploaded_at DESC).
 func (r *OrderRepo) ListByUser(ctx context.Context, userID string) ([]model.Order, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT number, user_id, status, accrual, uploaded_at
@@ -85,7 +88,7 @@ func (r *OrderRepo) ListByUser(ctx context.Context, userID string) ([]model.Orde
 	return out, rows.Err()
 }
 
-// ListPending возвращает заказы в статусах NEW/PROCESSING для воркера.
+// ListPending возвращает заказы NEW/PROCESSING для воркера (LIMIT 100).
 func (r *OrderRepo) ListPending(ctx context.Context) ([]model.Order, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT number, user_id, status, accrual, uploaded_at
@@ -107,14 +110,6 @@ func (r *OrderRepo) ListPending(ctx context.Context) ([]model.Order, error) {
 		out = append(out, o)
 	}
 	return out, rows.Err()
-}
-
-func (r *OrderRepo) UpdateStatus(ctx context.Context, number string, status model.OrderStatus, accrual float64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE orders SET status = $1, accrual = $2 WHERE number = $3`,
-		status, accrual, number,
-	)
-	return err
 }
 
 // ApplyResult атомарно обновляет статус заказа и начисляет баллы при PROCESSED.

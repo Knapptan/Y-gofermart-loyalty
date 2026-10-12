@@ -8,17 +8,17 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository"
 )
 
+// OrderService — сервис управления заказами.
 type OrderService struct {
 	orders repository.OrderRepository
 }
 
+// NewOrderService создаёт OrderService.
 func NewOrderService(orders repository.OrderRepository) *OrderService {
 	return &OrderService{orders: orders}
 }
 
-// CreateOrder загружает номер заказа.
-// Возвращает ErrInvalidOrderNumber при неверном формате/Луне.
-// ErrOrderExistsSame / ErrOrderExistsOther пробрасываются как есть.
+// CreateOrder валидирует номер по Луну и сохраняет заказ.
 func (s *OrderService) CreateOrder(ctx context.Context, userID, number string) error {
 	if number == "" || !LuhnValid(number) {
 		return ErrInvalidOrderNumber
@@ -26,11 +26,12 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID, number string) e
 	return s.orders.Create(ctx, userID, number)
 }
 
+// ListOrders возвращает заказы пользователя в порядке убывания uploaded_at.
 func (s *OrderService) ListOrders(ctx context.Context, userID string) ([]model.Order, error) {
 	return s.orders.ListByUser(ctx, userID)
 }
 
-// вспомогательное — чтобы не тащить errors.Is в handler
+// IsOrderConflict — вспомогательная функция для определения типа конфликта.
 func IsOrderConflict(err error) (same bool, other bool) {
 	return errors.Is(err, repository.ErrOrderExistsSame),
 		errors.Is(err, repository.ErrOrderExistsOther)

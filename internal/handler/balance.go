@@ -9,10 +9,12 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
 )
 
+// BalanceHandler — HTTP-хендлер просмотра и списания баланса.
 type BalanceHandler struct {
 	svc *service.BalanceService
 }
 
+// NewBalanceHandler создаёт BalanceHandler.
 func NewBalanceHandler(svc *service.BalanceService) *BalanceHandler {
 	return &BalanceHandler{svc: svc}
 }

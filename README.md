@@ -1,25 +1,95 @@
-# go-musthave-diploma-tpl
+# Гофермарт — накопительная система лояльности
 
-Шаблон репозитория для индивидуального дипломного проекта курса «Go-разработчик»
+HTTP API для управления баллами лояльности: регистрация, приём заказов,
+начисление и списание баллов. Реализация дипломного проекта «Яндекс Практикум».
 
-# Начало работы
+## Возможности
 
-1. Склонируйте репозиторий в любую подходящую директорию на вашем компьютере.
-2. В корне репозитория выполните команду `go mod init <name>` (где `<name>` — адрес вашего репозитория на GitHub без
-   префикса `https://`) для создания модуля
+- Регистрация и аутентификация по JWT
+- Загрузка номеров заказов с проверкой по алгоритму Луна
+- Фоновый воркер опрашивает внешний сервис расчёта баллов
+- Начисление и списание баллов в транзакциях с блокировкой строки
+- Все данные в PostgreSQL, миграции применяются автоматически при старте
 
-# Обновление шаблона
+## Требования
 
-Чтобы иметь возможность получать обновления автотестов и других частей шаблона, выполните команду:
+- Go 1.26+
+- PostgreSQL 14+
+
+## Запуск
+
+```bash
+export DATABASE_URI="postgres://user:pass@localhost:5432/gophermart?sslmode=disable"
+export RUN_ADDRESS="localhost:8080"
+export ACCRUAL_SYSTEM_ADDRESS="localhost:8081"
+export JWT_SECRET="your-secret-here"
+go run ./cmd/gophermart
+```
+
+Флаги дублируют переменные окружения: `-a`, `-d`, `-r`, `-jwt-secret`.
+Приоритет: **env > flag > default**.
+
+## API
+
+| Метод | Путь                         | Описание         | Auth |
+| ----- | ---------------------------- | ---------------- | ---- |
+| POST  | `/api/user/register`         | Регистрация      | —    |
+| POST  | `/api/user/login`            | Логин            | —    |
+| POST  | `/api/user/orders`           | Загрузка заказа  | ✓    |
+| GET   | `/api/user/orders`           | Список заказов   | ✓    |
+| GET   | `/api/user/balance`          | Баланс           | ✓    |
+| POST  | `/api/user/balance/withdraw` | Списание         | ✓    |
+| GET   | `/api/user/withdrawals`      | История списаний | ✓    |
+
+Аутентификация: заголовок `Authorization: Bearer <token>`,
+токен возвращается в том же заголовке ответа на `/register` и `/login`.
+
+### Примеры
+
+```bash
+# Регистрация
+curl -i -X POST localhost:8080/api/user/register \
+  -H "Content-Type: application/json" \
+  -d '{"login":"alice","password":"secret"}'
+
+# Загрузка заказа
+curl -i -X POST localhost:8080/api/user/orders \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: text/plain" \
+  -d '12345678903'
+
+# Баланс
+curl -i localhost:8080/api/user/balance \
+  -H "Authorization: Bearer <token>"
+```
+
+## Тесты
+
+```bash
+go test ./... -v
+```
+
+## Архитектура
 
 ```
-git remote add -m master template https://github.com/yandex-praktikum/go-musthave-diploma-tpl.git
+cmd/gophermart      — точка входа
+internal/config     — конфигурация
+internal/model      — доменные модели
+internal/repository — интерфейсы + реализации (postgres)
+internal/service    — бизнес-логика
+internal/handler    — HTTP-хендлеры
+internal/middleware — JWT-аутентификация
+internal/accrual    — клиент внешнего сервиса
+migrations          — SQL-миграции
 ```
 
-Для обновления кода автотестов выполните команду:
+## Внешний сервис расчёта
 
-```
-git fetch template && git checkout template/master .github
-```
+Ожидается `GET /api/orders/{number}` со следующими ответами:
 
-Затем добавьте полученные изменения в свой репозиторий.
+- `200` — `{"order":"...","status":"PROCESSED","accrual":500}`
+- `204` — заказ не зарегистрирован
+- `429` — rate limit (заголовок `Retry-After`)
+- `500` — ошибка
+
+Воркер опрашивает `NEW`/`PROCESSING` заказы раз в 5 секунд.

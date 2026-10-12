@@ -6,13 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/lib/pq"
 
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/accrual"
@@ -21,12 +19,17 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/middleware"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository/postgres"
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
+	"github.com/knapptan/go-musthave-diploma-tpl/migrations"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
-	cfg := config.ParseFlags()
+	cfg, err := config.ParseFlags()
+	if err != nil {
+		slog.Error("config failed", "error", err)
+		os.Exit(1)
+	}
 	slog.Info("config", "run", cfg.RunAddress, "db", cfg.DatabaseURI, "accrual", cfg.AccrualAddress)
 
 	db, err := sql.Open("postgres", cfg.DatabaseURI)
@@ -41,14 +44,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	cwd, _ := os.Getwd()
-	m, err := migrate.New("file://"+filepath.Join(cwd, "migrations"), cfg.DatabaseURI)
-	if err != nil {
-		slog.Error("migrate init failed", "error", err)
-		os.Exit(1)
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		slog.Error("migrate up failed", "error", err)
+	if err := runMigrations(cfg.DatabaseURI); err != nil {
+		slog.Error("migrate failed", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("migrations applied")
@@ -68,9 +65,6 @@ func main() {
 	orderH := handler.NewOrderHandler(orderSvc)
 	balanceH := handler.NewBalanceHandler(balanceSvc)
 
-	// --- router ---
-	r := chi.NewRouter()
-
 	// --- accrual worker ---
 	accrualClient := accrual.NewClient(cfg.AccrualAddress)
 	accrualWorker := service.NewAccrualWorker(orderRepo, accrualClient, 5*time.Second)
@@ -79,28 +73,47 @@ func main() {
 	defer cancel()
 	go accrualWorker.Run(ctx)
 
-	r.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
+	// --- router ---
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
-	r.Route("/api/user", func(r chi.Router) {
-		r.Post("/register", userH.Register)
-		r.Post("/login", userH.Login)
+	// Публичные маршруты.
+	mux.HandleFunc("POST /api/user/register", userH.Register)
+	mux.HandleFunc("POST /api/user/login", userH.Login)
 
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.Auth(cfg.JWTSecret))
-			r.Post("/orders", orderH.Create)
-			r.Get("/orders", orderH.List)
-			r.Get("/balance", balanceH.Get)
-			r.Post("/balance/withdraw", balanceH.Withdraw)
-			r.Get("/withdrawals", balanceH.ListWithdrawals)
-		})
-	})
+	// Защищённые маршруты — оборачиваем хендлеры в middleware.Auth.
+	auth := middleware.Auth(cfg.JWTSecret)
+	mux.Handle("POST /api/user/orders", auth(http.HandlerFunc(orderH.Create)))
+	mux.Handle("GET /api/user/orders", auth(http.HandlerFunc(orderH.List)))
+	mux.Handle("GET /api/user/balance", auth(http.HandlerFunc(balanceH.Get)))
+	mux.Handle("POST /api/user/balance/withdraw", auth(http.HandlerFunc(balanceH.Withdraw)))
+	mux.Handle("GET /api/user/withdrawals", auth(http.HandlerFunc(balanceH.ListWithdrawals)))
 
 	slog.Info("starting server", "addr", cfg.RunAddress)
-	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
+	if err := http.ListenAndServe(cfg.RunAddress, mux); err != nil {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// runMigrations применяет миграции из встроенной ФС.
+func runMigrations(dsn string) error {
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
 }

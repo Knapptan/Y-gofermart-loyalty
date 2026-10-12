@@ -75,3 +75,65 @@ func TestClient_GetOrder_500(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestClient_GetOrder_504(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	_, err := c.GetOrder(context.Background(), "123")
+	if err == nil {
+		t.Fatal("expected error for 504")
+	}
+}
+
+func TestTooManyRequestsError_Error(t *testing.T) {
+	e := &TooManyRequestsError{RetryAfter: 42 * time.Second}
+	want := "too many requests to accrual system"
+	if e.Error() != want {
+		t.Fatalf("Error() = %q, want %q", e.Error(), want)
+	}
+}
+
+func TestTooManyRequestsError_Is(t *testing.T) {
+	e := &TooManyRequestsError{RetryAfter: 0}
+	if !e.Is(ErrTooManyRequests) {
+		t.Fatal("Is(ErrTooManyRequests) should be true")
+	}
+	other := errors.New("other")
+	if e.Is(other) {
+		t.Fatal("Is(other) should be false")
+	}
+}
+
+func TestParseRetryAfter_Empty(t *testing.T) {
+	d := parseRetryAfter("")
+	if d != time.Minute {
+		t.Fatalf("want 1m, got %v", d)
+	}
+}
+
+func TestParseRetryAfter_Numeric(t *testing.T) {
+	d := parseRetryAfter("120")
+	if d != 120*time.Second {
+		t.Fatalf("want 120s, got %v", d)
+	}
+}
+
+func TestParseRetryAfter_HTTPDate(t *testing.T) {
+	expected := time.Now().UTC().Add(45 * time.Second)
+	h := expected.Format(http.TimeFormat)
+	d := parseRetryAfter(h)
+	if d < 42*time.Second || d > 48*time.Second {
+		t.Fatalf("want ~45s, got %v", d)
+	}
+}
+
+func TestParseRetryAfter_InvalidFallback(t *testing.T) {
+	d := parseRetryAfter("not-a-date")
+	if d != time.Minute {
+		t.Fatalf("want 1m fallback, got %v", d)
+	}
+}

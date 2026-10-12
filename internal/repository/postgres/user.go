@@ -1,3 +1,4 @@
+// Package postgres — PostgreSQL-реализации интерфейсов repository.
 package postgres
 
 import (
@@ -12,12 +13,15 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/repository"
 )
 
+// UserRepo — PostgreSQL-реализация UserRepository.
 type UserRepo struct {
 	db *sql.DB
 }
 
+// NewUserRepo создаёт UserRepo.
 func NewUserRepo(db *sql.DB) *UserRepo { return &UserRepo{db: db} }
 
+// Create вставляет пользователя; маппит UNIQUE violation → ErrLoginExists.
 func (r *UserRepo) Create(ctx context.Context, login, passwordHash string) (*model.User, error) {
 	id := uuid.NewString()
 	_, err := r.db.ExecContext(ctx,
@@ -34,6 +38,7 @@ func (r *UserRepo) Create(ctx context.Context, login, passwordHash string) (*mod
 	return &model.User{ID: id, Login: login, PasswordHash: passwordHash}, nil
 }
 
+// GetByLogin ищет пользователя по login.
 func (r *UserRepo) GetByLogin(ctx context.Context, login string) (*model.User, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, login, password_hash FROM users WHERE login = $1`, login)

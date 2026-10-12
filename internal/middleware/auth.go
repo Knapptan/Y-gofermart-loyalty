@@ -1,3 +1,5 @@
+// Package middleware содержит middleware для JWT-аутентификации
+// и работы с контекстом запроса.
 package middleware
 
 import (
@@ -12,11 +14,13 @@ type ctxKey int
 
 const userIDKey ctxKey = 1
 
+// UserID извлекает userID из контекста.
 func UserID(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(userIDKey).(string)
 	return v, ok
 }
 
+// Auth — JWT middleware, проверяющая заголовок Authorization: Bearer <token>.
 func Auth(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

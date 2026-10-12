@@ -1,3 +1,5 @@
+// Package model содержит доменные сущности сервиса лояльности:
+// User, Order, Balance, Withdrawal и статусы заказов.
 package model
 
 import "time"
@@ -6,10 +8,14 @@ import "time"
 type OrderStatus string
 
 const (
-	StatusNew        OrderStatus = "NEW"
+	// StatusNew — заказ загружен, но не попал в обработку.
+	StatusNew OrderStatus = "NEW"
+	// StatusProcessing — вознаграждение рассчитывается.
 	StatusProcessing OrderStatus = "PROCESSING"
-	StatusInvalid    OrderStatus = "INVALID"
-	StatusProcessed  OrderStatus = "PROCESSED"
+	// StatusInvalid — отказ в расчёте.
+	StatusInvalid OrderStatus = "INVALID"
+	// StatusProcessed — расчёт успешно завершён.
+	StatusProcessed OrderStatus = "PROCESSED"
 )
 
 // User — зарегистрированный пользователь.

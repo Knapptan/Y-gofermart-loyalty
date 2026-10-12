@@ -10,15 +10,17 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
 )
 
+// OrderHandler — HTTP-хендлер загрузки и просмотра заказов.
 type OrderHandler struct {
 	svc *service.OrderService
 }
 
+// NewOrderHandler создаёт OrderHandler.
 func NewOrderHandler(svc *service.OrderService) *OrderHandler {
 	return &OrderHandler{svc: svc}
 }
 
-// Create — POST /api/user/orders
+// Create — POST /api/user/orders.
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserID(r.Context())
 	if !ok {

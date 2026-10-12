@@ -1,7 +1,7 @@
 package service
 
 // LuhnValid проверяет номер по алгоритму Луна.
-// Возвращает false, если номер пуст или содержит нецифры.
+// Возвращает false для пустой строки и нецифровых символов.
 func LuhnValid(number string) bool {
 	if number == "" {
 		return false

@@ -1,3 +1,6 @@
+// Package service содержит бизнес-логику сервиса лояльности:
+// управление пользователями, заказами, балансом и фоновый воркер
+// для опроса accrual-сервиса.
 package service
 
 import (
@@ -13,13 +16,21 @@ import (
 
 const defaultPollInterval = 5 * time.Second
 
+// AccrualClient — абстракция клиента accrual-сервиса.
+// Позволяет подменять HTTP-клиент в тестах.
+type AccrualClient interface {
+	GetOrder(ctx context.Context, number string) (*accrual.Response, error)
+}
+
+// AccrualWorker — фоновый воркер, опрашивающий внешний сервис расчёта.
 type AccrualWorker struct {
 	orders   repository.OrderRepository
-	client   *accrual.Client
+	client   AccrualClient
 	interval time.Duration
 }
 
-func NewAccrualWorker(orders repository.OrderRepository, client *accrual.Client, interval time.Duration) *AccrualWorker {
+// NewAccrualWorker создаёт воркер с заданным интервалом.
+func NewAccrualWorker(orders repository.OrderRepository, client AccrualClient, interval time.Duration) *AccrualWorker {
 	if interval <= 0 {
 		interval = defaultPollInterval
 	}
@@ -67,8 +78,19 @@ func (w *AccrualWorker) tick(ctx context.Context) {
 		if err := w.processOrder(ctx, o); err != nil {
 			var tooMany *accrual.TooManyRequestsError
 			if errors.As(err, &tooMany) {
-				slog.Warn("accrual: rate limited", "retry_after", tooMany.RetryAfter)
-				return // прерываем весь тик
+				// Дождаемся Retry-After.
+				wait := tooMany.RetryAfter
+				if wait <= 0 {
+					wait = w.interval
+				}
+				slog.Warn("accrual: rate limited, waiting", "retry_after", wait)
+
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return
+				}
+				return // прерываем текущий тик.
 			}
 			slog.Error("accrual: process order failed", "number", o.Number, "error", err)
 		}
@@ -85,8 +107,8 @@ func (w *AccrualWorker) processOrder(ctx context.Context, o model.Order) error {
 		return err
 	}
 
-	status, accrual := mapAccrualStatus(resp)
-	return w.orders.ApplyResult(ctx, o.Number, status, accrual)
+	status, accrued := mapAccrualStatus(resp)
+	return w.orders.ApplyResult(ctx, o.Number, status, accrued)
 }
 
 // mapAccrualStatus переводит внешний статус во внутренний.
@@ -99,7 +121,8 @@ func mapAccrualStatus(r *accrual.Response) (model.OrderStatus, float64) {
 	case accrual.StatusProcessed:
 		return model.StatusProcessed, r.Accrual
 	default:
-		// REGISTERED и всё неизвестное — оставляем как NEW.
+		// REGISTERED — заказ принят системой расчёта, но данные ещё не готовы.
+		// Оставляем статус NEW, чтобы опросить в следующем тике.
 		return model.StatusNew, 0
 	}
 }

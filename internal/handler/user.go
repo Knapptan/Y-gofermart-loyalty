@@ -8,10 +8,12 @@ import (
 	"github.com/knapptan/go-musthave-diploma-tpl/internal/service"
 )
 
+// UserHandler — HTTP-хендлер регистрации и логина.
 type UserHandler struct {
 	svc *service.UserService
 }
 
+// NewUserHandler создаёт UserHandler.
 func NewUserHandler(svc *service.UserService) *UserHandler {
 	return &UserHandler{svc: svc}
 }
