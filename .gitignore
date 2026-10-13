@@ -21,3 +21,15 @@ vendor/
 # IDEs directories
 .idea
 .vscode
+
+# Скомпилированные бинарники accrual-сервиса
+cmd/accrual/accrual_*
+
+# Скомпилированные бинарники
+gophermart
+cmd/gophermart/gophermart
+cmd/accrual/accrual_*
+
+# Артефакты тестов
+coverage.out
+coverage.html
